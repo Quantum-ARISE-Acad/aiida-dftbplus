@@ -10,7 +10,6 @@ from os import path
 import click
 from aiida import cmdline, engine, orm
 from aiida.plugins import CalculationFactory
-
 from aiida_dftbplus import helpers
 from aiida_dftbplus.calculations import DftbPlusCalculation
 

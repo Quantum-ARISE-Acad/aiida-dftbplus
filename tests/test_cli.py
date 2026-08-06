@@ -2,10 +2,9 @@
 
 import pytest
 from aiida.plugins import DataFactory
+from aiida_dftbplus.cli import export, hsd, list_
 from click.testing import CliRunner
 from voluptuous import Invalid
-
-from aiida_dftbplus.cli import export, hsd, list_
 
 PARAMETERS = {
     "Geometry": {"GenFormat": {"_raw": "2  C\n  H\n  1 1 0.0 0.0 0.0"}},

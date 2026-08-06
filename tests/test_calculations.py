@@ -23,7 +23,6 @@ from aiida.engine.utils import instantiate_process
 from aiida.manage import get_manager
 from aiida.orm import Bool, Dict, FolderData, InstalledCode, SinglefileData
 from aiida.plugins import CalculationFactory
-
 from aiida_dftbplus.calculations import DftbPlusCalculation, validate_inputs
 from aiida_dftbplus.parsers import DftbPlusParser
 

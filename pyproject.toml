@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 name = "aiida-dftbplus"
 dynamic = ["version"]  # read from aiida_dftbplus/src/__init__.py
 description = "AiiDA plugin for DFTB+ calculations"
-authors = [{name = "Quantum ARISE, AMUZUGA Wisdom, LABBAH Elie", email = "sitouamu510@gmail.com"}]
+authors = [{name = "Quantum ARISE", email = "-"}]
 readme = "README.md"
 license = {file = "LICENSE"}
 classifiers = [
