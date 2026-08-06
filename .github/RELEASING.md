@@ -65,11 +65,69 @@ Create two environments under **Settings → Environments**: `pypi` and
 `testpypi`. Add required reviewers to `pypi` if uploads should need a human
 approval; everything else works without further configuration.
 
-### 3. Branch protection
+### 4. Branch protection
 
 Protect `main` and set **`ci success`** as the only required status check. That
 single job aggregates lint, SAST, build, test, integration and docs, so the
 list does not have to be maintained as jobs are added.
+
+## Troubleshooting the first release
+
+Both of these are setup steps that have not been done yet, not faults in the
+workflows. Neither needs a code change or a new tag.
+
+### `invalid-publisher`: valid token, but no corresponding publisher
+
+```text
+Error: Trusted publishing exchange failure:
+* `invalid-publisher`: valid token, but no corresponding publisher
+```
+
+PyPI received a correctly signed token from GitHub and found nothing registered
+to accept it — step 1 above has not been done, or one of its five fields does
+not match exactly. The claims printed under the error are what PyPI compared
+against; register a **pending publisher** with precisely those values:
+
+| Field on PyPI | Value | Where the claim comes from |
+|---|---|---|
+| PyPI project name | `aiida-dftbplus` | the package name in `pyproject.toml` |
+| Owner | `Quantum-ARISE-Acad` | `repository_owner` |
+| Repository name | `aiida-dftbplus` | `repository` |
+| Workflow name | `release.yml` | the filename in `workflow_ref`, with the extension |
+| Environment name | `pypi` | `environment` |
+
+Register the same thing on TestPyPI with the environment `testpypi`, or the
+push-to-`main` job fails the same way.
+
+Common mismatches: the full path `.github/workflows/release.yml` in the workflow
+field instead of the bare filename; the environment left blank; the publisher
+registered under a personal account rather than the organisation that will own
+the project.
+
+Nothing was uploaded when this fails, so the version number is still free. After
+registering, **re-run the failed jobs** on the same tag from the Actions page —
+no need to delete and re-push the tag.
+
+### `Failed to create deployment (status: 404)` on Pages
+
+```text
+Error: Creating Pages deployment failed
+Error: HttpError: Not Found
+```
+
+GitHub Pages is not enabled for the repository, so there is nothing to deploy
+to. Fix it under **Settings → Pages → Build and deployment** by setting the
+source to **GitHub Actions** (step 2 above), then re-run the `docs` workflow.
+
+If Pages is not offered at all, the repository is private and the account plan
+does not include Pages for private repositories — either make the repository
+public or upgrade the plan.
+
+### `Node 20 is being deprecated`
+
+Informational, from the runner, not a failure. It reports that an action still
+declares Node 20 while the runner now defaults to Node 24. No action needed;
+it will disappear when the action publishes a new major version.
 
 ## Cutting a release
 
