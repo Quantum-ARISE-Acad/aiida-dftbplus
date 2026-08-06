@@ -1,0 +1,166 @@
+name: release
+
+# Deployment pipeline.
+#
+#   push to main        -> full CI, then publish to TestPyPI (duplicates skipped)
+#   push tag vX.Y.Z     -> full CI, version check, publish to PyPI, GitHub release
+#   manual dispatch     -> same, with the target index chosen by hand
+#
+# Nothing is ever published unless every gate in ci.yml passed in this same run,
+# and the artifact that gets uploaded is the exact one CI built and tested.
+#
+# Authentication is PyPI Trusted Publishing (OIDC): no API token is stored in
+# this repository. See .github/RELEASING.md for the one-time setup.
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Index to publish to'
+        required: true
+        default: testpypi
+        type: choice
+        options: [testpypi, pypi]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+
+  # Every lint / SAST / build / test / docs gate, reused verbatim.
+  ci:
+    name: ci
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  # A tag that disagrees with __version__ would publish a surprise version.
+  # The job always runs — a skipped job would skip everything downstream of it.
+  version-check:
+    name: version check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install hatch
+        run: pip install hatch==1.17.1
+
+      - name: Tag must match the package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          pkg_version="$(hatch version)"
+          echo "tag=${tag_version} package=${pkg_version}"
+          if [ "${tag_version}" != "${pkg_version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match __version__ ${pkg_version} in src/aiida_dftbplus/__init__.py"
+            exit 1
+          fi
+
+  publish-testpypi:
+    name: publish to TestPyPI
+    needs: [ci]
+    if: >-
+      github.repository == 'Quantum-ARISE-Acad/aiida-dftbplus' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+       (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/aiida-dftbplus
+    permissions:
+      # Required for Trusted Publishing.
+      id-token: write
+    steps:
+      # The artifact CI built and tested in this same run.
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # A push to main usually carries a version already on TestPyPI;
+          # that is not a failure.
+          skip-existing: true
+          print-hash: true
+
+  publish-pypi:
+    name: publish to PyPI
+    needs: [ci, version-check]
+    if: >-
+      github.repository == 'Quantum-ARISE-Acad/aiida-dftbplus' &&
+      ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+       (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/p/aiida-dftbplus
+    permissions:
+      id-token: write        # Trusted Publishing
+      attestations: write    # build provenance
+      contents: read
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      # Signed, verifiable statement of where these files came from.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist/*'
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          print-hash: true
+
+  github-release:
+    name: github release
+    needs: [publish-pypi]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      # gh is preinstalled on the runner, so no third-party action is needed.
+      - name: Create the release with auto-generated notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag

@@ -1,18 +1,24 @@
-"""Data types provided by plugin
+"""Data types provided by ``aiida_dftbplus``.
 
-Register data types via the "aiida.data" entry point in pyproject.toml.
+Registered with AiiDA through the ``aiida.data`` entry point in
+``pyproject.toml``, under the name ``dftbplus``, so the class is reachable as
+``DataFactory('dftbplus')``.
+
+The module contains one node type, :class:`DftbParameters`, and the validation
+callback it is built from, :func:`hsd_block_name`. The validation is
+deliberately shallow — it checks the top-level block names and nothing else.
+The contents of each block go straight to DFTB+, whose own parser is the
+authority on them.
 """
 
-# You can directly use or subclass aiida.orm.data.Data
-# or any other data type listed under 'verdi data'
 from aiida.orm import Dict
 from voluptuous import Invalid, Schema
 
 from aiida_dftbplus.calculations import DftbPlusCalculation
 
-# The top-level blocks a dftb_in.hsd file may contain. Anything else at the top
-# level is almost certainly a typo — and a typo there is expensive, because
-# DFTB+ only reports it once the job is already running on the remote machine.
+#: The top-level blocks a ``dftb_in.hsd`` file may contain. Anything else at the
+#: top level is almost certainly a typo — and a typo there is expensive, because
+#: DFTB+ only reports it once the job is already running on the remote machine.
 KNOWN_TOP_LEVEL_BLOCKS = frozenset(
     {
         "Analysis",
@@ -37,9 +43,27 @@ def hsd_block_name(key):
     ``_raw*`` keys are written to the HSD file verbatim, and other
     ``_``-prefixed keys are metadata that never reaches the file at all.
 
-    :param key: the dictionary key to validate
-    :returns: the key, unchanged, when it is acceptable
-    :raises voluptuous.Invalid: when the key is not a known block
+    Parameters
+    ----------
+    key : str
+        The dictionary key to validate.
+
+    Returns
+    -------
+    str
+        The key, unchanged, when it is acceptable.
+
+    Raises
+    ------
+    voluptuous.Invalid
+        When the key is neither a known top-level block nor ``_``-prefixed.
+
+    Examples
+    --------
+    >>> hsd_block_name('Hamiltonian')
+    'Hamiltonian'
+    >>> hsd_block_name('_raw_1')
+    '_raw_1'
     """
     if not isinstance(key, str):
         raise Invalid(f"HSD block names must be strings, got {key!r}")
@@ -55,37 +79,63 @@ def hsd_block_name(key):
 
 
 class DftbParameters(Dict):  # pylint: disable=too-many-ancestors
-    """
-    DFTB+ input parameters.
+    """DFTB+ input parameters, validated at construction.
 
-    This class represents a nested python dictionary mirroring the block
-    structure of ``dftb_in.hsd``, which
+    A nested Python dictionary mirroring the block structure of
+    ``dftb_in.hsd``, which
     :class:`~aiida_dftbplus.calculations.DftbPlusCalculation` serialises into
     the input file. Storing the settings as a dictionary rather than as an
-    opaque file makes every DFTB+ parameter queryable in the AiiDA database.
+    opaque file is what makes every DFTB+ parameter queryable in the AiiDA
+    database.
 
-    Usage::
+    Using this class instead of a plain :class:`~aiida.orm.nodes.data.dict.Dict`
+    buys one thing: a misspelled top-level block is caught here, in Python,
+    instead of by DFTB+ minutes later on a remote machine.
 
-        DftbParameters = DataFactory('dftbplus')
-        parameters = DftbParameters({
-            'Geometry': {'GenFormat': {'_raw': '...'}},
-            'Hamiltonian': {'DFTB': {'SCC': True, 'MaxSCCIterations': 100}},
-        })
+    Examples
+    --------
+    >>> from aiida.plugins import DataFactory
+    >>> DftbParameters = DataFactory('dftbplus')
+    >>> parameters = DftbParameters({
+    ...     'Hamiltonian': {'DFTB': {'SCC': True, 'MaxSCCIterations': 100}},
+    ... })
+    >>> print(parameters.get_hsd())
+    Hamiltonian = DFTB {
+      SCC = Yes
+      MaxSCCIterations = 100
+    }
+
+    A typo is rejected immediately::
+
+        >>> DftbParameters({'Hamiltoniann': {}})
+        Traceback (most recent call last):
+        ...
+        voluptuous.error.MultipleInvalid: 'Hamiltoniann' is not a known top-level DFTB+ block. ...
+
+    See Also
+    --------
+    aiida_dftbplus.data.KNOWN_TOP_LEVEL_BLOCKS : the blocks this class accepts.
     """
 
-    # "voluptuous" schema  to add automatic validation
+    #: Voluptuous schema applied by :meth:`validate` on construction.
     schema = Schema({hsd_block_name: object})
 
     # pylint: disable=redefined-builtin
     def __init__(self, dict=None, **kwargs):
-        """
-        Constructor for the data class
+        """Construct and validate the node.
 
-        Usage: ``DftbParameters(dict={'Hamiltonian': {'DFTB': {'SCC': True}}})``
+        Parameters
+        ----------
+        dict : dict, optional
+            Dictionary of DFTB+ input blocks. Named ``dict`` to match the
+            signature of :class:`~aiida.orm.nodes.data.dict.Dict`.
+        **kwargs
+            Forwarded to :class:`~aiida.orm.nodes.data.dict.Dict`.
 
-        :param parameters_dict: dictionary of DFTB+ input blocks
-        :param type parameters_dict: dict
-
+        Raises
+        ------
+        voluptuous.Invalid
+            If any top-level key is not a known DFTB+ block.
         """
         dict = self.validate(dict)
         super().__init__(dict=dict, **kwargs)
@@ -93,16 +143,24 @@ class DftbParameters(Dict):  # pylint: disable=too-many-ancestors
     def validate(self, parameters_dict):
         """Validate the top-level DFTB+ blocks.
 
-        Uses the voluptuous package for validation. Find out about allowed keys using::
-
-            print(DftbParameters.schema.schema)
-
         Only the top level is checked: the contents of each block are passed
-        straight to DFTB+, whose own parser is the authority on them.
+        straight to DFTB+, whose own parser is the authority on them. List the
+        allowed keys with ``print(DftbParameters.schema.schema)``.
 
-        :param parameters_dict: dictionary of DFTB+ input blocks
-        :param type parameters_dict: dict
-        :returns: validated dictionary
+        Parameters
+        ----------
+        parameters_dict : dict
+            Dictionary of DFTB+ input blocks.
+
+        Returns
+        -------
+        dict
+            The validated dictionary.
+
+        Raises
+        ------
+        voluptuous.Invalid
+            If a top-level key is not a known block.
         """
         return DftbParameters.schema(parameters_dict)
 
@@ -111,22 +169,28 @@ class DftbParameters(Dict):  # pylint: disable=too-many-ancestors
 
         Returns exactly what
         :meth:`~aiida_dftbplus.calculations.DftbPlusCalculation.prepare_for_submission`
-        would write to ``dftb_in.hsd``, before the optional path patches. Useful
-        for checking an input by eye before submitting it.
+        would write to ``dftb_in.hsd``, *before* the optional path patches
+        (``fix_output_prefix`` and the Slater-Koster prefix rewrite). Useful for
+        checking an input by eye before submitting it, and what
+        ``verdi data dftbplus hsd <PK>`` prints.
 
-        :returns: the HSD representation of this node
-        :rtype: str
+        Returns
+        -------
+        str
+            The HSD representation of this node.
         """
         return DftbPlusCalculation._dict_to_hsd(self.get_dict())
 
     def __str__(self):
-        """String representation of node.
+        """Return the node's usual representation plus its dictionary.
 
-        Append values of dictionary to usual representation. E.g.::
+        Returns
+        -------
+        str
+            For example::
 
-            uuid: b416cbee-24e8-47a8-8c11-6d668770158b (pk: 590)
-            {'Hamiltonian': {'DFTB': {'SCC': True}}}
-
+                uuid: b416cbee-24e8-47a8-8c11-6d668770158b (pk: 590)
+                {'Hamiltonian': {'DFTB': {'SCC': True}}}
         """
         string = super().__str__()
         string += "\n" + str(self.get_dict())

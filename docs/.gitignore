@@ -1,1 +1,3 @@
 build/
+# autosummary writes these from the docstrings on every build
+source/reference/api/_generated/

@@ -1,13 +1,18 @@
-"""
-Parsers provided by aiida_dftbplus.
+"""Parsers provided by ``aiida_dftbplus``.
 
-Register parsers via the "aiida.parsers" entry point in pyproject.toml.
+Registered with AiiDA through the ``aiida.parsers`` entry point in
+``pyproject.toml``, under the name ``dftbplus``. It is the default parser of
+:class:`~aiida_dftbplus.calculations.DftbPlusCalculation`, which sets
+``metadata.options.parser_name = 'dftbplus'``.
 
-:class:`DftbPlusParser` reads the files retrieved by
-:class:`~aiida_dftbplus.calculations.DftbPlusCalculation`, decides whether the
-run succeeded, and attaches the scalars from ``detailed.out`` as the
-``output_parameters`` Dict. The complete set of retrieved files always remains
-available on the ``retrieved`` FolderData, whatever the parser concludes.
+:class:`DftbPlusParser` reads the files retrieved by the calculation, decides
+whether the run succeeded, and attaches the scalars from ``detailed.out`` as
+the ``output_parameters`` Dict. The complete set of retrieved files always
+remains available on the ``retrieved`` FolderData, whatever the parser
+concludes — a failed parse never loses data.
+
+Unit conversions use CODATA 2018 values; energies are reported both in Hartree
+and in eV, forces only in eV/Å.
 """
 
 from __future__ import annotations
@@ -32,33 +37,68 @@ _NUM = r"-?[\d.]+(?:[eE][+-]?\d+)?"
 
 
 class DftbPlusParser(Parser):
-    """
-    Parser class for parsing output of a DFTB+ calculation.
+    """Parse the output of a DFTB+ calculation.
+
+    The parser has two jobs, in this order:
+
+    1. **Classify the run.** Decide from ``dftb.out`` whether DFTB+ succeeded,
+       failed fatally, or merely failed to converge, and return the matching
+       exit code.
+    2. **Extract the numbers.** On a clean run, pull the scalars out of
+       ``detailed.out`` and attach them as ``output_parameters``.
+
+    Both steps are implemented as pure static methods —
+    :meth:`_detect_exit_code` and :meth:`_parse_detailed` — that take strings
+    and return plain Python objects, so the parsing logic is testable without
+    an AiiDA profile, a database, or a DFTB+ binary.
+
+    Examples
+    --------
+    Read the parsed scalars from a finished calculation::
+
+        from aiida import orm
+
+        node = orm.load_node(1234)
+        results = node.outputs.output_parameters.get_dict()
+        print(results['total_energy_eV'], results['max_force_eV_Ang'])
     """
 
     def __init__(self, node):
-        """
-        Initialize Parser instance
+        """Initialise the parser.
 
-        Checks that the ProcessNode being passed was produced by a DftbPlusCalculation.
+        Parameters
+        ----------
+        node : aiida.orm.nodes.process.process.ProcessNode
+            The process node whose outputs are to be parsed.
 
-        :param node: ProcessNode of calculation
-        :param type node: :class:`aiida.orm.nodes.process.process.ProcessNode`
+        Raises
+        ------
+        aiida.common.exceptions.ParsingError
+            If the node was not produced by a
+            :class:`~aiida_dftbplus.calculations.DftbPlusCalculation`.
         """
         super().__init__(node)
         if not issubclass(node.process_class, DftbPlusCalculation):
             raise exceptions.ParsingError("Can only parse DftbPlusCalculation")
 
     def parse(self, **kwargs):
-        """
-        Parse outputs, store results in database.
+        """Parse the retrieved files and store the results in the database.
 
         ``dftb.out`` and ``detailed.out`` are the two files that must be there:
         without them nothing can be said about the run, which is exit code 300.
         Otherwise :meth:`_detect_exit_code` classifies the run, and a clean run
         gets its ``detailed.out`` scalars attached as ``output_parameters``.
 
-        :returns: an exit code, if parsing fails (or nothing if parsing succeeds)
+        Parameters
+        ----------
+        **kwargs
+            Passed by the engine; unused.
+
+        Returns
+        -------
+        aiida.engine.ExitCode
+            ``ExitCode(0)`` on success, otherwise one of the calculation's
+            registered failure codes (300, 310, 320 or 330).
         """
         files_retrieved = self.retrieved.list_object_names()
 
@@ -84,11 +124,28 @@ class DftbPlusParser(Parser):
         return ExitCode(0)
 
     def _map_failure(self, code: int):
-        """Translate a non-zero detection integer into the matching ExitCode.
+        """Translate a non-zero detection integer into the matching exit code.
 
         The diagnosis is logged at the severity it deserves: a convergence
         failure is a warning (the run produced usable intermediate output), a
         fatal DFTB+ error is an error.
+
+        Parameters
+        ----------
+        code : int
+            One of 310, 320 or 330, as returned by :meth:`_detect_exit_code`.
+
+        Returns
+        -------
+        aiida.engine.ExitCode
+            The registered exit code of the calculation class.
+
+        Raises
+        ------
+        ValueError
+            If ``code`` is not one of the three mapped values. This is a
+            programming error, not a calculation failure, so it is raised
+            rather than returned.
         """
         if code == 310:
             self.logger.error("DFTB+ reported a fatal error")
@@ -103,25 +160,45 @@ class DftbPlusParser(Parser):
 
     @staticmethod
     def _detect_exit_code(stdout: str, detailed: str) -> int:  # pylint: disable=unused-argument
-        """
-        Pure-function exit-code detection: takes two strings, returns an integer.
+        """Classify a run from its output text.
 
-        Called by :meth:`parse` and directly testable without any AiiDA
-        infrastructure. Returns 0 on success, or the matching exit code.
+        A pure function: it takes two strings and returns an integer, so it is
+        directly testable without any AiiDA infrastructure.
 
+        Parameters
+        ----------
+        stdout : str
+            Content of ``dftb.out``.
+        detailed : str
+            Content of ``detailed.out``. Currently unused, and kept in the
+            signature so callers need not know which file a given signature
+            lives in.
+
+        Returns
+        -------
+        int
+            ``0`` for a clean run, otherwise ``310`` (fatal DFTB+ error),
+            ``320`` (SCC not converged) or ``330`` (geometry not converged).
+
+        Examples
+        --------
+        >>> DftbPlusParser._detect_exit_code('Geometry converged', '')
+        0
+        >>> DftbPlusParser._detect_exit_code('ERROR!\\n-> SCC is NOT converged', '')
+        320
+
+        Notes
+        -----
         **The check order matters.** The specific convergence failures are
         detected before the generic ``ERROR!`` guard, because DFTB+ prints
         ``ERROR!`` on the line immediately before ``SCC is NOT converged`` when
-        it exhausts MaxSCCIterations. With the guard first, every recoverable
-        SCC failure would be reported as a fatal 310 instead.
+        it exhausts ``MaxSCCIterations``. With the guard first, every
+        recoverable SCC failure would be reported as a fatal 310 instead — the
+        second example above is exactly that trap, and there is a regression
+        test for it.
 
         Note that ``SCC is NOT converged`` appears in ``dftb.out`` (stdout),
-        not in ``detailed.out`` — so both checks read stdout.
-
-        :param stdout: content of dftb.out
-        :param detailed: content of detailed.out (currently unused; kept so
-            callers need not care which file a signature lives in)
-        :returns: 0, 310, 320 or 330
+        not in ``detailed.out``, so both checks read stdout.
         """
         # 310 — an empty stdout means the process died before producing output
         if not stdout.strip():
@@ -145,13 +222,49 @@ class DftbPlusParser(Parser):
 
     @staticmethod
     def _parse_detailed(text: str) -> dict:
-        """Extract the relevant scalars from ``detailed.out``.
+        """Extract the scalars this plugin reports from ``detailed.out``.
 
         A geometry optimisation writes one result block per step, so wherever a
         quantity can repeat the **last** occurrence is taken — that is the
         converged value.
 
-        Pure function — directly testable without AiiDA infrastructure.
+        Parameters
+        ----------
+        text : str
+            Content of ``detailed.out``.
+
+        Returns
+        -------
+        dict
+            Whatever could be found, with these keys:
+
+            ``total_energy_H``, ``total_energy_eV`` : float
+                Total energy, in Hartree and eV. Absent if the file has none.
+            ``fermi_energy_eV`` : float
+                Fermi level in eV. Absent for a non-periodic system, or when
+                DFTB+ did not print one.
+            ``scc_converged`` : bool
+                Always present.
+            ``n_scc_iterations`` : int
+                Number of SCC iterations of the last block.
+            ``forces_eV_Ang`` : list of list of float
+                One ``[Fx, Fy, Fz]`` per atom, converted from Ha/Bohr. Present
+                only when forces were requested with ``CalculateForces``.
+            ``max_force_eV_Ang`` : float
+                Largest force magnitude — the number to watch when judging a
+                relaxation.
+
+        Examples
+        --------
+        >>> DftbPlusParser._parse_detailed('Total energy: -4.0733851869 H')['total_energy_H']
+        -4.0733851869
+
+        Notes
+        -----
+        This is a pure function over the file's text, so a new quantity can be
+        added and tested without running DFTB+ at all. Nothing outside
+        ``detailed.out`` is read here — ``band.out`` and the geometry files are
+        retrieved but not parsed.
         """
         result = {}
 

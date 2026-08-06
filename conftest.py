@@ -2,7 +2,7 @@
 
 import pytest
 
-pytest_plugins = ["aiida.manage.tests.pytest_fixtures"]
+pytest_plugins = ["aiida.tools.pytest_fixtures"]
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -15,6 +15,6 @@ def clear_database_auto(aiida_profile_clean):  # pylint: disable=unused-argument
 
 
 @pytest.fixture(scope="function")
-def dftbplus_code(aiida_local_code_factory):
+def dftbplus_code(aiida_code_installed):
     """Get a dftbplus code."""
-    return aiida_local_code_factory(executable="dftb+", entry_point="dftbplus")
+    return aiida_code_installed(filepath_executable="dftb+", default_calc_job_plugin="dftbplus")

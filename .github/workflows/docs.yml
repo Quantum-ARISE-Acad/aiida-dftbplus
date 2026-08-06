@@ -1,0 +1,121 @@
+name: docs
+
+# Builds the Sphinx site and deploys it to GitHub Pages.
+#
+# Pull requests are *not* handled here: the `docs` job in ci.yml already builds
+# them with warnings as errors on every PR. This workflow owns deployment, so a
+# push to main or a release tag publishes exactly what those gates approved.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+  schedule:
+    # Link check only, Mondays at 05:17 UTC. Dead external links surface
+    # without blocking a normal build.
+    - cron: '17 5 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_COLOR: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  HATCH_VERSION: "1.17.1"
+
+jobs:
+
+  build:
+    name: build
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      # The architecture diagrams are rendered from .dot sources at build time.
+      - name: Install Graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+
+      - name: Install hatch
+        run: pip install hatch==${{ env.HATCH_VERSION }}
+
+      # A clean build: an incremental one hides autodoc and cross-reference
+      # warnings, and the Makefile treats warnings as errors.
+      - name: Build the site
+        run: hatch run docs:rebuild
+
+      # GitHub Pages serves _static/ etc. only if Jekyll is disabled.
+      - name: Disable Jekyll
+        run: touch docs/build/html/.nojekyll
+
+      - name: Upload the artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/build/html
+
+  deploy:
+    name: deploy to github pages
+    needs: build
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  linkcheck:
+    name: link check
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install Graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+
+      - name: Install hatch
+        run: pip install hatch==${{ env.HATCH_VERSION }}
+
+      - name: Check external links
+        run: hatch run docs:linkcheck
+
+      - name: Publish the result to the job summary
+        if: always()
+        run: |
+          {
+            echo '## Documentation link check'
+            echo
+            echo '```'
+            cat docs/build/linkcheck/output.txt 2>/dev/null || echo 'no output file'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

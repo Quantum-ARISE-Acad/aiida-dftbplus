@@ -1,4 +1,4 @@
-[![Build Status][ci-badge]][ci-link]
+[![CI/CD Status][ci-badge]][ci-link]
 [![Coverage Status][cov-badge]][cov-link]
 [![Docs status][docs-badge]][docs-link]
 [![PyPI version][pypi-badge]][pypi-link]
@@ -114,8 +114,18 @@ verdi data dftbplus hsd <PK>    # render the node as the dftb_in.hsd it produces
 
 ## Documentation
 
-Full input reference and developer guide:
-[aiida-dftbplus.readthedocs.io](http://aiida-dftbplus.readthedocs.io/).
+Full documentation — getting started, tutorials, how-to guides, architecture and
+API reference — at
+[quantum-arise-acad.github.io/aiida-dftbplus](https://quantum-arise-acad.github.io/aiida-dftbplus/).
+
+Start here:
+
+* [Prerequisites](https://quantum-arise-acad.github.io/aiida-dftbplus/getting-started/prerequisites.html) — the four things you need before anything runs
+* [Slater–Koster parameter sets](https://quantum-arise-acad.github.io/aiida-dftbplus/getting-started/skf-parameter-sets.html) — which files, where to get them, how to point the plugin at them
+* [Your first calculation](https://quantum-arise-acad.github.io/aiida-dftbplus/getting-started/first-calculation.html)
+* [Architecture](https://quantum-arise-acad.github.io/aiida-dftbplus/architecture/index.html) — for maintainers
+
+Build it locally with `pip install -e . --group docs && make -C docs`.
 
 ## License
 
@@ -125,11 +135,11 @@ MIT — see [LICENSE](LICENSE).
 
 sitouamu510@gmail.com
 
-[ci-badge]: https://github.com/Quantum-ARISE-Acad/aiida-dftbplus/workflows/ci/badge.svg?branch=main
+[ci-badge]: https://github.com/Quantum-ARISE-Acad/aiida-dftbplus/actions/workflows/release.yml/badge.svg?branch=main
 [ci-link]: https://github.com/Quantum-ARISE-Acad/aiida-dftbplus/actions
 [cov-badge]: https://coveralls.io/repos/github/Quantum-ARISE-Acad/aiida-dftbplus/badge.svg?branch=main
 [cov-link]: https://coveralls.io/github/Quantum-ARISE-Acad/aiida-dftbplus?branch=main
-[docs-badge]: https://readthedocs.org/projects/aiida-dftbplus/badge
-[docs-link]: http://aiida-dftbplus.readthedocs.io/
+[docs-badge]: https://github.com/Quantum-ARISE-Acad/aiida-dftbplus/actions/workflows/docs.yml/badge.svg?branch=main
+[docs-link]: https://quantum-arise-acad.github.io/aiida-dftbplus/
 [pypi-badge]: https://badge.fury.io/py/aiida-dftbplus.svg
 [pypi-link]: https://badge.fury.io/py/aiida-dftbplus

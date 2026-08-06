@@ -1,0 +1,32 @@
+/* Documentation styling for aiida-dftbplus.
+ *
+ * Only two things are adjusted: how the Graphviz diagrams sit on the page, and
+ * how wide tables behave on a phone. Everything else is pydata-sphinx-theme's
+ * own light/dark handling, which is left alone on purpose.
+ */
+
+/* Diagrams are generated as SVG with a transparent background, so the page
+ * colour shows through and one rendering works in both themes. Centre them and
+ * let them shrink on narrow screens. */
+.graphviz {
+  text-align: center;
+  margin: 1.5rem 0;
+}
+
+.graphviz svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Wide tables (the exit-code and HSD-rule tables) scroll inside their own box
+ * instead of pushing the page sideways. */
+.bd-article table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* Keep inline literals readable when they wrap in a narrow column. */
+code.literal {
+  word-break: break-word;
+}

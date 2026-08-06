@@ -1,9 +1,21 @@
-"""
-Command line interface (cli) for aiida_dftbplus.
+"""Command line interface for ``aiida_dftbplus``.
 
-Register new commands either via the "console_scripts" entry point or plug them
-directly into the 'verdi' command by using AiiDA-specific entry points like
-"aiida.cmdline.data" (both in the pyproject.toml file).
+Registered through the ``aiida.cmdline.data`` entry point in
+``pyproject.toml``, which plugs the commands straight into ``verdi``:
+
+.. code-block:: shell
+
+    verdi data dftbplus list            # every DftbParameters node
+    verdi data dftbplus export <PK>     # the node as plain text
+    verdi data dftbplus hsd <PK>        # the node as the dftb_in.hsd it produces
+
+The ``hsd`` command is the useful one day to day: it renders a stored parameter
+node exactly as the calculation would write it, so an input can be checked by
+eye before it is submitted.
+
+New commands can be added either here (they appear under ``verdi data
+dftbplus``) or as a ``console_scripts`` entry point for a standalone
+executable.
 """
 
 import sys
@@ -17,7 +29,15 @@ from aiida.plugins import DataFactory
 
 
 def _write_or_echo(string, outfile):
-    """Write ``string`` to ``outfile``, or print it when no file was given."""
+    """Write ``string`` to ``outfile``, or print it when no file was given.
+
+    Parameters
+    ----------
+    string : str
+        The text to emit.
+    outfile : str or None
+        Path to write to. When falsy, the text goes to stdout instead.
+    """
     if outfile:
         with open(outfile, "w", encoding="utf8") as handle:
             handle.write(string)

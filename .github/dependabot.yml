@@ -1,0 +1,25 @@
+version: 2
+
+updates:
+  # Keep the actions used by the pipeline current — this is where most
+  # supply-chain fixes for CI arrive.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies, ci]
+    groups:
+      actions:
+        patterns: ['*']
+
+  # Runtime and development dependencies declared in pyproject.toml.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies]
+    open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns: ['*']
+        update-types: [minor, patch]

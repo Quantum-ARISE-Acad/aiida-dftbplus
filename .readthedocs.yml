@@ -1,16 +1,23 @@
 version: 2
 
+# GitHub Pages is the primary home of the documentation (see
+# .github/workflows/docs.yml). This file is kept so the project can mirror on
+# Read the Docs for versioned URLs without rework.
+
 build:
   os: ubuntu-22.04
   tools:
     python: "3.12"
+  apt_packages:
+    # The architecture diagrams are rendered from .dot sources at build time.
+    - graphviz
 
 python:
   install:
     - method: pip
       path: .
-      extra_requirements:
-        - docs
+    # The docs toolchain lives in a PEP 735 dependency group, not in an extra.
+    - requirements: docs/requirements.txt
 
 sphinx:
     builder: html

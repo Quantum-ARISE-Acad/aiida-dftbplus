@@ -1,47 +1,60 @@
-"""
-Calculations provided by aiida_dftbplus.
+"""Calculations provided by ``aiida_dftbplus``.
 
-Register calculations via the "aiida.calculations" entry point in pyproject.toml.
+Registered with AiiDA through the ``aiida.calculations`` entry point in
+``pyproject.toml``, under the name ``dftbplus``.
 
-This module provides a single CalcJob, :class:`DftbPlusCalculation`, that wraps
-one DFTB+ execution: it assembles ``dftb_in.hsd`` (plus the Slater-Koster and
-material files the run needs), launches the executable, and retrieves every
-output file DFTB+ produces.
+This module provides a single :class:`~aiida.engine.processes.calcjobs.calcjob.CalcJob`,
+:class:`DftbPlusCalculation`, that wraps one DFTB+ execution: it assembles
+``dftb_in.hsd`` (plus the Slater-Koster and material files the run needs),
+launches the executable, and retrieves every output file DFTB+ produces.
 
-**Inputs**
+Inputs
+------
+code : InstalledCode
+    The registered DFTB+ executable.
+parameters : Dict, optional
+    Structured DFTB+ input as a nested Python dict mirroring the HSD block
+    structure. When present, ``dftb_in.hsd`` is generated via
+    :meth:`DftbPlusCalculation._dict_to_hsd`, which makes every DFTB+ setting
+    queryable in the AiiDA database.
+dftb_input : SinglefileData, optional
+    A ready-made ``dftb_in.hsd``, copied verbatim. Exactly one of
+    ``parameters`` or ``dftb_input`` is required.
+skf_files : FolderData, optional
+    Slater-Koster parameter files, copied into the working directory via the
+    engine's ``local_copy_list`` rather than through the sandbox. Omit when
+    ``use_remote_skf_path=True``. Ship only the element pairs the run needs: a
+    full parameter set is thousands of files, and every one of them is copied
+    again for every calculation.
+mat_files : FolderData, optional
+    All other files the run needs (``geometry.gen``, ``charges.bin``, ...).
+structure : Dict, optional
+    Metadata (``formula``, ``source_dir``) kept for provenance. Not used during
+    DFTB+ execution.
 
-- ``code`` — the registered DFTB+ executable (Code node).
-- ``parameters`` — Dict (optional): structured DFTB+ input as a nested Python
-  dict mirroring the HSD block structure. When present, ``dftb_in.hsd`` is
-  generated via :meth:`DftbPlusCalculation._dict_to_hsd`, which makes every
-  DFTB+ setting queryable in the AiiDA database.
-- ``dftb_input`` — SinglefileData (optional): a ready-made ``dftb_in.hsd``,
-  copied verbatim. Exactly one of ``parameters`` or ``dftb_input`` is required.
-- ``skf_files`` — FolderData (optional): Slater-Koster ``*.skf`` parameter
-  files, copied into the working directory via the engine's ``local_copy_list``
-  rather than through the sandbox. Omit when ``use_remote_skf_path=True``.
-  Ship only the pairs the run needs: a full parameter set is thousands of
-  files, and every one of them is copied again for every calculation.
-- ``mat_files`` — FolderData (optional): all other files the run needs
-  (``geometry.gen``, ``charges.bin``, ...).
-- ``structure`` — Dict (optional): metadata (``formula``, ``source_dir``) kept
-  for provenance. Not used during DFTB+ execution.
+Outputs
+-------
+retrieved : FolderData
+    Every file in the retrieve list. Provided by ``CalcJob`` itself, so it is
+    always present, whatever the parser concludes.
+output_parameters : Dict
+    Scalars parsed from ``detailed.out`` by
+    :class:`~aiida_dftbplus.parsers.DftbPlusParser`. Attached only on a clean
+    run.
 
-**Outputs**
-
-- ``retrieved`` — FolderData: every file in the retrieve list (provided by
-  ``CalcJob`` itself, always present).
-- ``output_parameters`` — Dict: scalars parsed from ``detailed.out`` by
-  :class:`~aiida_dftbplus.parsers.DftbPlusParser`.
-
-**Exit codes**
-
+Exit codes
+----------
 ===  ============================  =========================================
 300  ERROR_MISSING_OUTPUT          ``dftb.out`` or ``detailed.out`` not retrieved
 310  ERROR_DFTB_FAILED             DFTB+ reported a fatal error in ``dftb.out``
 320  ERROR_SCC_NOT_CONVERGED       SCC cycle did not converge
 330  ERROR_GEOMETRY_NOT_CONVERGED  geometry relaxation did not converge
 ===  ============================  =========================================
+
+See Also
+--------
+aiida_dftbplus.parsers.DftbPlusParser : reads what this calculation retrieves.
+aiida_dftbplus.data.DftbParameters : validated node type for ``parameters``.
 """
 
 from __future__ import annotations
@@ -49,20 +62,37 @@ from __future__ import annotations
 import re
 
 from aiida.common import datastructures
+from aiida.common.folders import Folder
 from aiida.engine import CalcJob
 from aiida.orm import Bool, Dict, FolderData, SinglefileData
 
 
-def validate_inputs(inputs, ctx=None):  # pylint: disable=unused-argument
+def validate_inputs(inputs, ctx=None) -> str | None:  # pylint: disable=unused-argument
     """Check that exactly one of ``parameters`` / ``dftb_input`` was given.
 
     Without this the engine would accept a job with neither input and write an
     empty ``dftb_in.hsd``, a mistake DFTB+ only reports once it is already
     running on the remote machine.
 
-    :param inputs: the inputs namespace being validated
-    :param ctx: port-namespace context supplied by the engine (unused)
-    :returns: an error message when invalid, ``None`` otherwise
+    Parameters
+    ----------
+    inputs : dict
+        The inputs namespace being validated by the engine.
+    ctx : optional
+        Port-namespace context supplied by the engine. Unused.
+
+    Returns
+    -------
+    str or None
+        An error message when the combination is invalid, ``None`` when it is
+        acceptable. The engine raises :class:`ValueError` with this message.
+
+    Examples
+    --------
+    >>> validate_inputs({}) is None
+    False
+    >>> validate_inputs({'parameters': object()}) is None
+    True
     """
     has_parameters = inputs.get("parameters") is not None
     has_dftb_input = inputs.get("dftb_input") is not None
@@ -75,15 +105,62 @@ def validate_inputs(inputs, ctx=None):  # pylint: disable=unused-argument
 
 
 class DftbPlusCalculation(CalcJob):
-    """
-    AiiDA calculation plugin wrapping the DFTB+ executable.
+    """AiiDA calculation plugin wrapping the DFTB+ executable.
 
-    Runs one DFTB+ calculation and retrieves all of its output files.
+    Runs one DFTB+ calculation and retrieves all of its output files. The
+    calculation is a single shot: it does not restart, retry, or repair
+    anything. Building recovery on top of it is the job of a ``WorkChain``.
+
+    The DFTB+ input can be given in either of two forms, and exactly one of
+    them is required:
+
+    ``parameters``
+        A nested dictionary mirroring the HSD block structure, serialised by
+        :meth:`_dict_to_hsd`. Preferred, because every setting stays queryable
+        in the database.
+    ``dftb_input``
+        A ready-made ``dftb_in.hsd`` file, copied verbatim. Useful for inputs
+        produced by another tool.
+
+    Examples
+    --------
+    Submit a single-point calculation with the Slater-Koster files already
+    present on the target machine::
+
+        from aiida import engine, orm
+        from aiida.plugins import CalculationFactory
+
+        parameters = orm.Dict({
+            'Geometry': {'GenFormat': {'_raw': open('geometry.gen').read()}},
+            'Hamiltonian': {'DFTB': {'SCC': True, 'MaxSCCIterations': 100}},
+            'Analysis': {'CalculateForces': True},
+        })
+
+        node = engine.submit(
+            CalculationFactory('dftbplus'),
+            code=orm.load_code('dftb+@localhost'),
+            parameters=parameters,
+            use_remote_skf_path=orm.Bool(True),
+        )
+
+    See Also
+    --------
+    aiida_dftbplus.parsers.DftbPlusParser : parses what this class retrieves.
     """
 
     @classmethod
     def define(cls, spec):
-        """Define inputs, outputs and exit codes of the calculation."""
+        """Define inputs, outputs, exit codes and option defaults.
+
+        Called once by AiiDA when the process class is loaded; the resulting
+        specification is what the process builder and the engine validate
+        against.
+
+        Parameters
+        ----------
+        spec : aiida.engine.processes.process_spec.CalcJobProcessSpec
+            The specification object to populate.
+        """
         super().define(spec)
 
         # ── Inputs ────────────────────────────────────────────────────────
@@ -111,7 +188,7 @@ class DftbPlusCalculation(CalcJob):
             valid_type=FolderData,
             required=False,
             help=(
-                "FolderData containing the *.skf Slater-Koster parameter files. "
+                "FolderData containing the Slater-Koster parameter files (.skf). "
                 "Stored once in the database and reused across calculations. "
                 "Omit when use_remote_skf_path is True."
             ),
@@ -197,9 +274,8 @@ class DftbPlusCalculation(CalcJob):
         spec.inputs["metadata"]["options"]["max_wallclock_seconds"].default = 7200
         spec.inputs["metadata"]["options"]["withmpi"].default = False
 
-    def prepare_for_submission(self, folder):
-        """
-        Create input files.
+    def prepare_for_submission(self, folder: Folder) -> datastructures.CalcInfo:
+        """Create the input files and describe the job to the engine.
 
         The steps, in order:
 
@@ -207,29 +283,44 @@ class DftbPlusCalculation(CalcJob):
            verbatim from ``dftb_input``;
         2. patch that text (output prefix, SKF prefix) as the flags request;
         3. write ``dftb_in.hsd`` into the sandbox folder;
-        4. hand the ``*.skf`` files to the engine's ``local_copy_list``, unless
-           the remote already holds them;
+        4. hand the Slater-Koster files to the engine's ``local_copy_list``,
+           unless the remote already holds them;
         5. copy the extra material files into the sandbox;
         6. build and return the ``CodeInfo`` + ``CalcInfo``.
 
         All patching happens on the local HSD string, so no input node is ever
         modified in place.
 
-        **Why the SKF files bypass the sandbox.** Anything written into the
-        sandbox is copied twice more by the engine: once into the working
-        directory, and once into this calculation's own repository as a record
-        of its raw input. For a full Slater-Koster set — several thousand files
-        and well over a gigabyte — those two extra passes dominate the job,
-        which itself may run in under a second. Putting the ``skf_files`` node
-        on ``local_copy_list`` instead lets the engine copy the whole folder in
-        one tree operation straight to the working directory. Provenance is
-        unaffected: ``skf_files`` is a stored input node, linked to this
-        calculation, so the record lives there rather than being duplicated
-        per job.
+        Parameters
+        ----------
+        folder : aiida.common.folders.Folder
+            Sandbox folder where the plugin writes the files the calculation
+            needs. The engine uploads its contents to the working directory and
+            keeps a copy in the calculation node's repository.
 
-        :param folder: an `aiida.common.folders.Folder` where the plugin should temporarily place all files
-            needed by the calculation.
-        :return: `aiida.common.datastructures.CalcInfo` instance
+        Returns
+        -------
+        aiida.common.datastructures.CalcInfo
+            What to run, what to copy, and what to retrieve afterwards.
+
+        Notes
+        -----
+        **Why the Slater-Koster files bypass the sandbox.** Anything written
+        into the sandbox is copied twice more by the engine: once into the
+        working directory, and once into this calculation's own repository as a
+        record of its raw input. For a full Slater-Koster set — several
+        thousand files and well over a gigabyte — those two extra passes
+        dominate the job, which itself may run in under a second. Putting the
+        ``skf_files`` node on ``local_copy_list`` instead lets the engine copy
+        the whole folder in one tree operation straight to the working
+        directory. Provenance is unaffected: ``skf_files`` is a stored input
+        node, linked to this calculation, so the record lives there rather than
+        being duplicated per job.
+
+        The ``local_copy_list`` entries must be strings, never ``None``:
+        ``presubmit`` validates them with
+        :func:`~aiida.common.utils.validate_list_of_string_tuples` and rejects
+        ``None``, even though the copy itself would accept it.
         """
         # ── Step 1: obtain the HSD text ───────────────────────────────────
         if "parameters" in self.inputs:
@@ -298,17 +389,40 @@ class DftbPlusCalculation(CalcJob):
 
     @staticmethod
     def _patch_skf_paths(hsd: str) -> str:
-        """
-        Replace absolute SKF directory paths in the HSD text with './'
-        so DFTB+ finds the *.skf files in the working directory, where
-        AiiDA copies them before running the job.
+        """Rewrite absolute Slater-Koster directory paths to ``./``.
+
+        DFTB+ must find the ``.skf`` files in the working directory, which is
+        where AiiDA copies them before running the job — so whatever absolute
+        path the input carried has to be collapsed.
 
         Handles the common HSD spellings::
 
-            Prefix = "/absolute/path/"              → Prefix = "./"
-            Prefix = '/absolute/path/'              → Prefix = './'
-            Prefix = /absolute/path/                → Prefix = ./
-            SlaterKosterFiles = "/absolute/path/"   → SlaterKosterFiles = "./"
+            Prefix = "/absolute/path/"              -> Prefix = "./"
+            Prefix = '/absolute/path/'              -> Prefix = './'
+            Prefix = /absolute/path/                -> Prefix = ./
+            SlaterKosterFiles = "/absolute/path/"   -> SlaterKosterFiles = "./"
+
+        Parameters
+        ----------
+        hsd : str
+            The HSD text to patch.
+
+        Returns
+        -------
+        str
+            The same text with every recognised prefix pointing at ``./``.
+
+        Examples
+        --------
+        >>> DftbPlusCalculation._patch_skf_paths('Prefix = "/opt/skf/mio-1-1/"')
+        'Prefix = "./"'
+
+        Notes
+        -----
+        Called only when ``skf_files`` is uploaded. With
+        ``use_remote_skf_path=True`` the original absolute path is left alone,
+        which is what makes a stale path in the input visible instead of being
+        masked by this rewrite.
         """
         hsd = re.sub(r'(Prefix\s*=\s*")[^"]+(")', r"\1./\2", hsd)
         hsd = re.sub(r"(Prefix\s*=\s*')[^']+(')", r"\1./\2", hsd)
@@ -321,34 +435,97 @@ class DftbPlusCalculation(CalcJob):
         """Replace ``OutputPrefix = './'`` with ``OutputPrefix = "geom.out"``.
 
         A bare ``./`` makes DFTB+ write the relaxed geometry to a path that is
-        not a file in the working directory, so nothing is ever retrieved.
+        not a file in the working directory, so nothing is ever retrieved. The
+        retrieve list expects ``geom.out.gen`` and ``geom.out.xyz``, which is
+        what this prefix produces.
+
+        Parameters
+        ----------
+        hsd : str
+            The HSD text to patch.
+
+        Returns
+        -------
+        str
+            The text with a bare ``./`` output prefix replaced. A prefix that
+            already names something is left untouched.
+
+        Examples
+        --------
+        >>> DftbPlusCalculation._fix_output_prefix('OutputPrefix = "./"')
+        'OutputPrefix = "geom.out"'
+        >>> DftbPlusCalculation._fix_output_prefix('OutputPrefix = "relaxed"')
+        'OutputPrefix = "relaxed"'
         """
         return re.sub(r"(OutputPrefix\s*=\s*)['\"]?\./['\"]?", r'\1"geom.out"', hsd)
 
     @staticmethod
     def _dict_to_hsd(params: dict, indent: int = 0) -> str:
-        """
-        Serialise a nested Python dict to DFTB+ HSD text.
+        """Serialise a nested Python dict to DFTB+ HSD text.
 
-        Serialisation rules
-        -------------------
-        - bool value        → ``Key = Yes`` / ``Key = No``
-        - int / float value → ``Key = value``  (floats use %g format)
-        - str value         → ``Key = "value"``  (always quoted)
-        - flat list         → ``Key = v1 v2 v3``
-        - list of lists     → ``Key { one row per line }``
-        - empty dict {}     → ``Key {}``
-        - single-key dict, inner value is a dict
-                            → ``Key = TypeName { ... }``  (named typed block)
-        - single-key dict, inner value is a scalar
-                            → ``Key { innerKey = value }``  (anonymous block)
-        - multi-key dict    → ``Key { ... }``  (anonymous block)
-        - dict containing ``_raw`` (and no other key)
-                            → block content replaced by raw text verbatim
-        - key starting with ``_raw`` (e.g. ``_raw_1``)
-                            → value written as a raw line; the key itself is omitted
-        - any other key starting with ``_``
-                            → skipped (internal metadata)
+        This is the heart of the plugin: it is what lets a DFTB+ input live in
+        the database as a queryable dictionary instead of an opaque file.
+
+        The rules, in the order they are applied:
+
+        ======================================  ====================================
+        Python value                            HSD output
+        ======================================  ====================================
+        ``bool``                                ``Key = Yes`` / ``Key = No``
+        ``int``                                 ``Key = 42``
+        ``float``                               ``Key = 1e-05`` (``%g`` format)
+        ``str``                                 ``Key = "value"`` (always quoted)
+        flat ``list``                           ``Key = v1 v2 v3``
+        list of lists                           ``Key { one row per line }``
+        empty ``dict``                          ``Key {}``
+        single-key dict, dict value             ``Key = TypeName { ... }``
+        single-key dict, scalar value           ``Key { innerKey = value }``
+        multi-key dict                          ``Key { ... }``
+        dict whose only key is ``_raw``         block content written verbatim
+        key starting with ``_raw``              value written as a raw line
+        any other key starting with ``_``       skipped (internal metadata)
+        ======================================  ====================================
+
+        Parameters
+        ----------
+        params : dict
+            The parameter dictionary, nested to any depth.
+        indent : int, default: 0
+            Current indentation level. Two spaces per level; used by the
+            recursive calls, not normally passed by callers.
+
+        Returns
+        -------
+        str
+            HSD text without a trailing newline.
+
+        Examples
+        --------
+        >>> print(DftbPlusCalculation._dict_to_hsd({
+        ...     'Hamiltonian': {'DFTB': {'SCC': True, 'MaxSCCIterations': 100}},
+        ... }))
+        Hamiltonian = DFTB {
+          SCC = Yes
+          MaxSCCIterations = 100
+        }
+
+        Anything the dictionary form cannot express goes through verbatim:
+
+        >>> print(DftbPlusCalculation._dict_to_hsd({
+        ...     '_raw_1': 'Analysis { PrintForces = Yes }',
+        ... }))
+        Analysis { PrintForces = Yes }
+
+        Notes
+        -----
+        ``bool`` is tested before ``int`` on purpose: in Python ``bool`` is a
+        subclass of ``int``, so the reverse order would write ``SCC = 1``,
+        which DFTB+ rejects.
+
+        No value is ever validated against DFTB+'s own grammar — a misspelled
+        keyword inside a block is reported by DFTB+ at run time, not here. Only
+        the top-level block names are checked, and only when the input is a
+        :class:`~aiida_dftbplus.data.DftbParameters` node.
         """
         lines = []
         pad = "  " * indent

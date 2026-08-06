@@ -1,0 +1,141 @@
+"""Shared visual language for the aiida-dftbplus documentation diagrams.
+
+One colour means one thing across all five diagrams, and every category is also
+distinguished by **shape**, so the diagrams stay readable in greyscale and for
+readers with colour vision deficiency.
+
+The fills are pale and the text is near-black, so a single rendering is legible
+on both the light and the dark version of the site: the SVG background is
+transparent, but each node paints its own fill, so node text never sits directly
+on the page colour.
+
+============  =====================  ============================================
+Category      Shape                  Meaning
+============  =====================  ============================================
+``PLUGIN``    rounded rectangle      code that lives in ``src/aiida_dftbplus``
+``DATA``      oval                   an AiiDA ``Data`` node in the database
+``PROCESS``   rectangle              an AiiDA process node (``CalcJobNode``)
+``FILE``      note                   a file on disk, local or remote
+``BINARY``    hexagon                an external executable
+``INFRA``     3-D box                AiiDA machinery the plugin does not own
+============  =====================  ============================================
+
+Dashed borders mark anything optional; a doubled border marks the one object the
+diagram is about.
+"""
+
+from __future__ import annotations
+
+# ── Palette ──────────────────────────────────────────────────────────────────
+# Pale fill / saturated border / near-black text: legible on white and on the
+# dark theme's near-black page alike.
+
+INK = "#1b1f24"
+EDGE = "#7a8290"
+
+CATEGORIES = {
+    "PLUGIN": {"fillcolor": "#cfe3fb", "color": "#1f6fd0", "shape": "box", "style": "rounded,filled"},
+    "DATA": {"fillcolor": "#d6f0da", "color": "#2e8b57", "shape": "oval", "style": "filled"},
+    "PROCESS": {"fillcolor": "#ffe0cc", "color": "#c2571a", "shape": "box", "style": "filled"},
+    "FILE": {"fillcolor": "#fdefc6", "color": "#b8860b", "shape": "note", "style": "filled"},
+    "BINARY": {"fillcolor": "#e6dcf5", "color": "#6b46c1", "shape": "hexagon", "style": "filled"},
+    "INFRA": {"fillcolor": "#e4e7eb", "color": "#5b6672", "shape": "box3d", "style": "filled"},
+}
+
+FONT = "Helvetica,Arial,sans-serif"
+
+
+def escape(label: str) -> str:
+    """Escape a label for inclusion in a Graphviz double-quoted string."""
+    return label.replace('"', r"\"").replace("\n", r"\n")
+
+
+def node(name: str, label: str, category: str, *, optional: bool = False, focus: bool = False) -> str:
+    """Render one Graphviz node statement.
+
+    Parameters
+    ----------
+    name
+        The node identifier used by edges.
+    label
+        The visible text. Use ``\\n`` for line breaks.
+    category
+        One of the keys of :data:`CATEGORIES`.
+    optional
+        Draw the border dashed, marking the object as optional.
+    focus
+        Draw the border doubled and thicker, marking the subject of the diagram.
+
+    Returns
+    -------
+    str
+        A single ``name [ ... ];`` line.
+    """
+    spec = dict(CATEGORIES[category])
+    style = spec.pop("style")
+    if optional:
+        style += ",dashed"
+    if focus:
+        spec["penwidth"] = "2.4"
+    attrs = ", ".join(f'{key}="{value}"' for key, value in spec.items())
+    return f'  {name} [label="{escape(label)}", style="{style}", {attrs}];'
+
+
+def edge(tail: str, head: str, label: str = "", *, style: str = "solid", constraint: bool = True) -> str:
+    """Render one Graphviz edge statement."""
+    attrs = [f'color="{EDGE}"', f'fontcolor="{EDGE}"', 'fontsize="9"', f'style="{style}"']
+    if label:
+        attrs.append(f'label="{escape(label)}"')
+    if not constraint:
+        attrs.append('constraint="false"')
+    return f'  {tail} -> {head} [{", ".join(attrs)}];'
+
+
+def legend(entries: list[tuple[str, str]], *, name: str = "cluster_legend") -> str:
+    """Render a legend cluster.
+
+    Parameters
+    ----------
+    entries
+        ``(category, label)`` pairs, drawn in the given order.
+    name
+        The cluster identifier; must start with ``cluster_`` to be boxed.
+
+    Returns
+    -------
+    str
+        A ``subgraph`` block ready to paste into a digraph body.
+    """
+    lines = [
+        f"  subgraph {name} {{",
+        '    label="Legend"; fontsize="9"; fontname="' + FONT + '";',
+        f'    color="{EDGE}"; fontcolor="{EDGE}"; style="dashed";',
+        '    rank="same";',
+    ]
+    previous = None
+    for index, (category, label) in enumerate(entries):
+        key = f"{name}_{index}"
+        lines.append("  " + node(key, label, category))
+        if previous is not None:
+            lines.append(f'    {previous} -> {key} [style="invis"];')
+        previous = key
+    lines.append("  }")
+    return "\n".join(lines)
+
+
+def digraph(title: str, body: list[str], *, rankdir: str = "TB", nodesep: str = "0.4") -> str:
+    """Wrap statements into a complete ``digraph`` document."""
+    return "\n".join(
+        [
+            f"// {title}",
+            "// Generated by docs/diagrams/generate.py — do not edit by hand.",
+            "digraph G {",
+            f'  bgcolor="transparent"; rankdir="{rankdir}"; nodesep={nodesep}; ranksep="0.45";',
+            f'  fontname="{FONT}"; fontsize="10";',
+            f'  node [fontname="{FONT}", fontsize="10", fontcolor="{INK}", margin="0.14,0.08"];',
+            f'  edge [fontname="{FONT}"];',
+            *body,
+            "}",
+            "",
+        ]
+    )
