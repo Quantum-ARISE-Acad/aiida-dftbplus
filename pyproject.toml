@@ -57,7 +57,7 @@ docs = [
 
 [project.urls]
 Source = "https://github.com/Quantum-ARISE-Acad/aiida-dftbplus"
-Documentation = "https://aiida-dftbplus.readthedocs.io"
+Documentation = "https://shrill-morning-67e8.sitouamu510.workers.dev/"
 "Bug Tracker" = "https://github.com/Quantum-ARISE-Acad/aiida-dftbplus/issues"
 
 [project.entry-points."aiida.data"]

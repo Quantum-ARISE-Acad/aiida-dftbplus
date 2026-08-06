@@ -116,7 +116,8 @@ verdi data dftbplus hsd <PK>    # render the node as the dftb_in.hsd it produces
 
 Full documentation — getting started, tutorials, how-to guides, architecture and
 API reference — at
-[quantum-arise-acad.github.io/aiida-dftbplus](https://quantum-arise-acad.github.io/aiida-dftbplus/).
+<!-- [quantum-arise-acad.github.io/aiida-dftbplus](https://quantum-arise-acad.github.io/aiida-dftbplus/). -->
+[Documentation](https://shrill-morning-67e8.sitouamu510.workers.dev/).
 
 Start here:
 
