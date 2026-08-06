@@ -47,7 +47,7 @@ tests = [
 # Build the documentation with: pip install -e . --group docs && make -C docs
 # (or `hatch run docs:build`, which installs this group for you).
 docs = [
-    "sphinx~=7.2",
+    "sphinx>=7.2,<9.0",
     "myst-parser~=4.0",
     "sphinx-autodoc-typehints~=2.0",
     "sphinx-copybutton~=0.5",
