@@ -20,4 +20,4 @@ plugin registry stays the single source of truth::
     DftbParameters = DataFactory('dftbplus')
 """
 
-__version__ = "0.1.0a0"
+__version__ = "0.1.0"
