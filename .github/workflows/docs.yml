@@ -4,12 +4,16 @@ name: docs
 #
 # Pull requests are *not* handled here: the `docs` job in ci.yml already builds
 # them with warnings as errors on every PR. This workflow owns deployment, so a
-# push to main or a release tag publishes exactly what those gates approved.
+# push to main publishes exactly what those gates approved.
+#
+# Tags deliberately do NOT trigger it. A tag points at a commit that is already
+# on main, so its documentation has been deployed by that push — and the
+# `github-pages` environment allows deployments only from the default branch, so
+# a tag run would fail its protection rule rather than publish anything new.
 
 on:
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
   schedule:
     # Link check only, Mondays at 05:17 UTC. Dead external links surface
@@ -19,8 +23,11 @@ on:
 permissions:
   contents: read
 
+# One global group, as GitHub's own Pages workflow recommends: a site has a
+# single deployment pipeline, and letting two runs deploy at once makes the
+# second one queue behind the first instead of failing cleanly.
 concurrency:
-  group: pages-${{ github.ref }}
+  group: pages
   cancel-in-progress: false
 
 env:
@@ -70,7 +77,11 @@ jobs:
     needs: build
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Generous on purpose: the Pages backend can leave a deployment in
+    # `in_progress` for a long time, especially the first one for a new site.
+    # A job timeout shorter than the action's own cancels it mid-poll and the
+    # deployment is reported as `error` rather than finishing.
+    timeout-minutes: 35
 
     permissions:
       pages: write
@@ -84,6 +95,12 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # Milliseconds the action waits for the deployment to finish. The
+          # default is 10 minutes; keep it below the job timeout above so a
+          # genuinely stuck deployment fails with the action's own message
+          # instead of being cancelled without one.
+          timeout: 1800000
 
   linkcheck:
     name: link check

@@ -7,7 +7,7 @@
 | `ci.yml` | pull requests, and called by `release.yml` | lint, SAST, dependency review, build, tests, integration test, docs |
 | `release.yml` | push to `main`, tags `v*`, manual dispatch | runs `ci.yml`, then publishes |
 | `codeql.yml` | push, pull requests, weekly | GitHub code scanning |
-| `docs.yml` | push to `main`, tags `v*`, manual, weekly | builds the Sphinx site and deploys it to GitHub Pages; the weekly run is a link check only |
+| `docs.yml` | push to `main`, manual, weekly | builds the Sphinx site and deploys it to GitHub Pages; the weekly run is a link check only |
 
 `ci.yml` has no push trigger of its own — `release.yml` calls it, so a push to
 `main` runs every gate exactly once, and the artifact that gets published is the
@@ -122,6 +122,65 @@ source to **GitHub Actions** (step 2 above), then re-run the `docs` workflow.
 If Pages is not offered at all, the repository is private and the account plan
 does not include Pages for private repositories — either make the repository
 public or upgrade the plan.
+
+### `Tag "vX.Y.Z" is not allowed to deploy to github-pages`
+
+```text
+Tag "v0.1.0" is not allowed to deploy to github-pages due to environment
+protection rules.
+```
+
+GitHub creates the `github-pages` environment with a deployment branch policy
+that permits the default branch only, so a run triggered by a tag builds fine
+and is then refused at the deployment step.
+
+`docs.yml` therefore triggers on pushes to `main` and not on tags. A tag points
+at a commit that is already on `main`, so its documentation was published by
+that push — there is nothing for a tag run to add.
+
+If you do want tags to publish (a versioned docs scheme, say), add the
+permission rather than removing the protection: **Settings → Environments →
+`github-pages` → Deployment branches and tags → Add rule**, with a rule of type
+**Tag** matching `v*`.
+
+### The deployment sits at `deployment_queued` and is then cancelled
+
+```text
+Getting Pages deployment status...
+Current status: deployment_queued
+... (repeated) ...
+Canceling Pages deployment...
+Error: The operation was canceled.
+```
+
+The deployment was created and accepted — this is not a permissions or content
+problem. It means the Pages backend took the deployment and had not finished it
+by the time something gave up. If the run ends after almost exactly the job's
+`timeout-minutes`, it was the **job timeout** that cancelled it, not the action;
+the deployment is then recorded as `error`.
+
+`docs.yml` allows 35 minutes for the deploy job and passes `timeout: 1800000`
+to `deploy-pages`, so the action reports its own failure rather than being
+killed mid-poll. It also uses a single `concurrency: group: pages`, so two runs
+cannot queue deployments against the same site at once.
+
+Inspect what actually happened, rather than re-reading the log:
+
+```shell
+gh api repos/Quantum-ARISE-Acad/aiida-dftbplus/pages --jq '{status, build_type, html_url}'
+gh api "repos/Quantum-ARISE-Acad/aiida-dftbplus/deployments?environment=github-pages&per_page=3" \
+    --jq '.[] | {id, sha: .sha[0:8], created_at}'
+gh api repos/Quantum-ARISE-Acad/aiida-dftbplus/deployments/<ID>/statuses \
+    --jq '.[] | {state, created_at}'
+```
+
+A healthy deployment goes `waiting → queued → in_progress → success` in a minute
+or two. `status: null` on the site means it has never completed one.
+
+If it stalls repeatedly with a small artifact, check
+<https://www.githubstatus.com> for the **Pages** component and retry — the first
+deployment for a brand-new site is the one that most often needs a second
+attempt.
 
 ### `Node 20 is being deprecated`
 
