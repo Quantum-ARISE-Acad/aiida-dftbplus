@@ -117,14 +117,15 @@ verdi data dftbplus hsd <PK>    # render the node as the dftb_in.hsd it produces
 Full documentation — getting started, tutorials, how-to guides, architecture and
 API reference — at
 <!-- [quantum-arise-acad.github.io/aiida-dftbplus](https://quantum-arise-acad.github.io/aiida-dftbplus/). -->
-[Documentation](https://shrill-morning-67e8.sitouamu510.workers.dev/).
+[aiida-dftbplus.readthedocs.io](https://aiida-dftbplus.readthedocs.io/en/latest/).
+<!-- [Documentation](https://shrill-morning-67e8.sitouamu510.workers.dev/). -->
 
 Start here:
 
-* [Prerequisites](https://quantum-arise-acad.github.io/aiida-dftbplus/getting-started/prerequisites.html) — the four things you need before anything runs
-* [Slater–Koster parameter sets](https://quantum-arise-acad.github.io/aiida-dftbplus/getting-started/skf-parameter-sets.html) — which files, where to get them, how to point the plugin at them
-* [Your first calculation](https://quantum-arise-acad.github.io/aiida-dftbplus/getting-started/first-calculation.html)
-* [Architecture](https://quantum-arise-acad.github.io/aiida-dftbplus/architecture/index.html) — for maintainers
+* [Prerequisites](https://aiida-dftbplus.readthedocs.io/en/latest/getting-started/prerequisites.html) — the four things you need before anything runs
+* [Slater–Koster parameter sets](https://aiida-dftbplus.readthedocs.io/en/latest/getting-started/skf-parameter-sets.html) — which files, where to get them, how to point the plugin at them
+* [Your first calculation](https://aiida-dftbplus.readthedocs.io/en/latest/getting-started/first-calculation.html)
+* [Architecture](https://aiida-dftbplus.readthedocs.io/en/latest/architecture/index.html) — for maintainers
 
 Build it locally with `pip install -e . --group docs && make -C docs`.
 

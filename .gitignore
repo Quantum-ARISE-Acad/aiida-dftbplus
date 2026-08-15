@@ -16,6 +16,7 @@ pip-wheel-metadata/
 SESSION_NOTE.md
 .claude/
 aiida_dftbplus_docs_prompt.md
+aiida-dftbplus/.github/workflows/docs.yml
 
 
 # ==========================================
