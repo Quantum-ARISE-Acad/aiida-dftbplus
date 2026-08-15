@@ -4,11 +4,34 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.1] - 2026-08-15
 
-Nothing has been published to PyPI yet; the current version, `0.1.0a0`, is a
-pre-release that `pip` installs only with `--pre`. The first published release
-will be `0.1.0`.
+Documentation and packaging only. Nothing in `src/aiida_dftbplus` changed, so
+this release behaves exactly like 0.1.0.
+
+### Changed
+
+- The documentation is hosted on [Read the Docs](https://aiida-dftbplus.readthedocs.io/)
+  instead of GitHub Pages. `docs.yml` no longer builds or deploys the site — it
+  runs the weekly external link check only, and Read the Docs builds from its
+  own webhook. Every documentation link in the README, the changelog and the
+  release notes points at the new home.
+
+### Fixed
+
+- The documentation build no longer fails against aiida-core 2.9, which attaches
+  generated pydantic models (`Model`, `WriteModel`, `AttributesModel`, ...) to
+  every `Node` subclass under the plugin's own module path. Autodoc documented
+  them and emitted a cross-reference to `AttributesWriteModel`, which resolves
+  nowhere and, with warnings treated as errors, failed the build. They are
+  excluded from the API reference; none of them is part of this plugin's
+  interface.
+- The package metadata carries its authors and its Source and Bug Tracker URLs
+  again, so the PyPI page and the AiiDA plugin registry entry show them.
+
+## [0.1.0] - 2026-08-06
+
+First published release.
 
 ### Added
 
