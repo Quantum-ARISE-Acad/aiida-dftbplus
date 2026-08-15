@@ -1,8 +1,9 @@
 version: 2
 
-# GitHub Pages is the primary home of the documentation (see
-# .github/workflows/docs.yml). This file is kept so the project can mirror on
-# Read the Docs for versioned URLs without rework.
+# Read the Docs is the home of the documentation:
+# https://aiida-dftbplus.readthedocs.io/. It builds from its own webhook, so no
+# GitHub workflow deploys the site; ci.yml only gates the build on pull
+# requests, and docs.yml runs the weekly external link check.
 
 build:
   os: ubuntu-22.04

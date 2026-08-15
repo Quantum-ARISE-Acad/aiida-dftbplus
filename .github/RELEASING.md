@@ -7,7 +7,7 @@
 | `ci.yml` | pull requests, and called by `release.yml` | lint, SAST, dependency review, build, tests, integration test, docs |
 | `release.yml` | push to `main`, tags `v*`, manual dispatch | runs `ci.yml`, then publishes |
 | `codeql.yml` | push, pull requests, weekly | GitHub code scanning |
-| `docs.yml` | push to `main`, manual, weekly | builds the Sphinx site and deploys it to GitHub Pages; the weekly run is a link check only |
+| `docs.yml` | manual, weekly | external link check only — the site itself is built and published by Read the Docs |
 
 `ci.yml` has no push trigger of its own — `release.yml` calls it, so a push to
 `main` runs every gate exactly once, and the artifact that gets published is the
@@ -52,12 +52,21 @@ form — the project is created on first upload.
 Once this is in place the old `pypi_token` repository secret is unused and
 should be deleted from **Settings → Secrets and variables → Actions**.
 
-### 2. GitHub Pages
+### 2. Read the Docs
 
-Under **Settings → Pages**, set the source to **GitHub Actions**. `docs.yml`
-then publishes to <https://quantum-arise-acad.github.io/aiida-dftbplus/> on
-every push to `main`. Pull requests are not deployed — they are only built, by
-the `docs` job in `ci.yml`, with warnings treated as errors.
+The documentation lives at <https://aiida-dftbplus.readthedocs.io/>. Read the
+Docs builds it from its own webhook — no GitHub workflow deploys anything, and
+nothing here needs a token.
+
+Import the project once at <https://readthedocs.org/dashboard/import/>. The
+build is described entirely by `.readthedocs.yml` — one of the alternate
+filenames Read the Docs still auto-detects; rename it to `.readthedocs.yaml` if
+that ever stops being true. Enable **Admin → Settings → Build pull requests for
+this project** if preview builds are wanted.
+
+`.readthedocs.yml` sets `fail_on_warning: true`, the same rule the `docs` job in
+`ci.yml` applies on every pull request, so a broken cross-reference fails before
+it can reach the published site.
 
 ### 3. GitHub environments
 
@@ -73,8 +82,8 @@ list does not have to be maintained as jobs are added.
 
 ## Troubleshooting the first release
 
-Both of these are setup steps that have not been done yet, not faults in the
-workflows. Neither needs a code change or a new tag.
+The first of these is a setup step that has not been done yet, not a fault in
+the workflows: it needs no code change and no new tag.
 
 ### `invalid-publisher`: valid token, but no corresponding publisher
 
@@ -108,79 +117,21 @@ Nothing was uploaded when this fails, so the version number is still free. After
 registering, **re-run the failed jobs** on the same tag from the Actions page —
 no need to delete and re-push the tag.
 
-### `Failed to create deployment (status: 404)` on Pages
+### The Read the Docs build fails while the pull request was green
 
-```text
-Error: Creating Pages deployment failed
-Error: HttpError: Not Found
-```
+`.readthedocs.yml` sets `fail_on_warning: true`, so their builder fails on
+exactly what `-nW` fails on locally. The usual cause is a dependency that moved
+underneath the docs rather than anything in the pull request: Read the Docs
+resolves the toolchain and `aiida-core` afresh on every build, so a new release
+can introduce a cross-reference target that did not exist when CI last ran.
 
-GitHub Pages is not enabled for the repository, so there is nothing to deploy
-to. Fix it under **Settings → Pages → Build and deployment** by setting the
-source to **GitHub Actions** (step 2 above), then re-run the `docs` workflow.
-
-If Pages is not offered at all, the repository is private and the account plan
-does not include Pages for private repositories — either make the repository
-public or upgrade the plan.
-
-### `Tag "vX.Y.Z" is not allowed to deploy to github-pages`
-
-```text
-Tag "v0.1.0" is not allowed to deploy to github-pages due to environment
-protection rules.
-```
-
-GitHub creates the `github-pages` environment with a deployment branch policy
-that permits the default branch only, so a run triggered by a tag builds fine
-and is then refused at the deployment step.
-
-`docs.yml` therefore triggers on pushes to `main` and not on tags. A tag points
-at a commit that is already on `main`, so its documentation was published by
-that push — there is nothing for a tag run to add.
-
-If you do want tags to publish (a versioned docs scheme, say), add the
-permission rather than removing the protection: **Settings → Environments →
-`github-pages` → Deployment branches and tags → Add rule**, with a rule of type
-**Tag** matching `v*`.
-
-### The deployment sits at `deployment_queued` and is then cancelled
-
-```text
-Getting Pages deployment status...
-Current status: deployment_queued
-... (repeated) ...
-Canceling Pages deployment...
-Error: The operation was canceled.
-```
-
-The deployment was created and accepted — this is not a permissions or content
-problem. It means the Pages backend took the deployment and had not finished it
-by the time something gave up. If the run ends after almost exactly the job's
-`timeout-minutes`, it was the **job timeout** that cancelled it, not the action;
-the deployment is then recorded as `error`.
-
-`docs.yml` allows 35 minutes for the deploy job and passes `timeout: 1800000`
-to `deploy-pages`, so the action reports its own failure rather than being
-killed mid-poll. It also uses a single `concurrency: group: pages`, so two runs
-cannot queue deployments against the same site at once.
-
-Inspect what actually happened, rather than re-reading the log:
+Reproduce it the way their builder sees it — a fresh environment and a clean
+build, because an incremental one hides autodoc warnings:
 
 ```shell
-gh api repos/Quantum-ARISE-Acad/aiida-dftbplus/pages --jq '{status, build_type, html_url}'
-gh api "repos/Quantum-ARISE-Acad/aiida-dftbplus/deployments?environment=github-pages&per_page=3" \
-    --jq '.[] | {id, sha: .sha[0:8], created_at}'
-gh api repos/Quantum-ARISE-Acad/aiida-dftbplus/deployments/<ID>/statuses \
-    --jq '.[] | {state, created_at}'
+hatch env remove docs
+hatch run docs:rebuild
 ```
-
-A healthy deployment goes `waiting → queued → in_progress → success` in a minute
-or two. `status: null` on the site means it has never completed one.
-
-If it stalls repeatedly with a small artifact, check
-<https://www.githubstatus.com> for the **Pages** component and retry — the first
-deployment for a brand-new site is the one that most often needs a second
-attempt.
 
 ### `Node 20 is being deprecated`
 

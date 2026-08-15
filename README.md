@@ -116,7 +116,6 @@ verdi data dftbplus hsd <PK>    # render the node as the dftb_in.hsd it produces
 
 Full documentation — getting started, tutorials, how-to guides, architecture and
 API reference — at
-<!-- [quantum-arise-acad.github.io/aiida-dftbplus](https://quantum-arise-acad.github.io/aiida-dftbplus/). -->
 [aiida-dftbplus.readthedocs.io](https://aiida-dftbplus.readthedocs.io/en/latest/).
 <!-- [Documentation](https://shrill-morning-67e8.sitouamu510.workers.dev/). -->
 
@@ -141,7 +140,7 @@ sitouamu510@gmail.com
 [ci-link]: https://github.com/Quantum-ARISE-Acad/aiida-dftbplus/actions
 [cov-badge]: https://coveralls.io/repos/github/Quantum-ARISE-Acad/aiida-dftbplus/badge.svg?branch=main
 [cov-link]: https://coveralls.io/github/Quantum-ARISE-Acad/aiida-dftbplus?branch=main
-[docs-badge]: https://github.com/Quantum-ARISE-Acad/aiida-dftbplus/actions/workflows/docs.yml/badge.svg?branch=main
-[docs-link]: https://quantum-arise-acad.github.io/aiida-dftbplus/
+[docs-badge]: https://readthedocs.org/projects/aiida-dftbplus/badge/?version=latest
+[docs-link]: https://aiida-dftbplus.readthedocs.io/en/latest/
 [pypi-badge]: https://badge.fury.io/py/aiida-dftbplus.svg
 [pypi-link]: https://badge.fury.io/py/aiida-dftbplus

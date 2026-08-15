@@ -98,11 +98,25 @@ myst_substitutions = {"version": release}
 autosummary_generate = True
 autosummary_imported_members = False
 
+# aiida-core >= 2.9 attaches a family of generated pydantic models to every Node
+# subclass (``Model``, ``WriteModel``, ``AttributesModel``, ...). They carry
+# ``__module__ = 'aiida_dftbplus.data'``, so autodoc takes them for this plugin's
+# own API and — with ``undoc-members`` — documents them, annotations included.
+# ``WriteModel.attributes: AttributesWriteModel`` then points at a target that
+# exists in no inventory, which ``-nW`` turns into a build failure. None of these
+# models is part of the plugin's interface, so they are excluded outright rather
+# than silenced with a nitpick exemption.
+AIIDA_GENERATED_MODELS = (
+    "Model, BaseNodeModel, ReadModel, WriteModel, AttributesModel, "
+    "AttributesWriteModel, CliModel, ConstructorModel, ConstructorArgsModel"
+)
+
 autodoc_default_options = {
     "members": True,
     "undoc-members": True,
     "show-inheritance": True,
     "member-order": "bysource",
+    "exclude-members": AIIDA_GENERATED_MODELS,
 }
 # The plugin's private helpers (``_dict_to_hsd``, ``_detect_exit_code``, ...)
 # carry the load-bearing logic and are documented deliberately; they are listed
@@ -181,7 +195,7 @@ html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 html_show_sourcelink = False
 html_search_language = "en"
-html_use_opensearch = "https://quantum-arise-acad.github.io/aiida-dftbplus"
+html_use_opensearch = "https://aiida-dftbplus.readthedocs.io/en/latest"
 
 html_theme_options = {
     "github_url": "https://github.com/Quantum-ARISE-Acad/aiida-dftbplus",

@@ -1,34 +1,27 @@
 name: docs
 
-# Builds the Sphinx site and deploys it to GitHub Pages.
+# Link check only. The documentation is hosted on Read the Docs, which builds
+# and publishes it from its own webhook on every push to `main` and every tag —
+# nothing here deploys the site.
 #
-# Pull requests are *not* handled here: the `docs` job in ci.yml already builds
-# them with warnings as errors on every PR. This workflow owns deployment, so a
-# push to main publishes exactly what those gates approved.
-#
-# Tags deliberately do NOT trigger it. A tag points at a commit that is already
-# on main, so its documentation has been deployed by that push — and the
-# `github-pages` environment allows deployments only from the default branch, so
-# a tag run would fail its protection rule rather than publish anything new.
+# The build itself is still gated on every pull request by the `docs` job in
+# ci.yml, with warnings treated as errors, so a broken cross-reference never
+# reaches Read the Docs in the first place. `.readthedocs.yml` sets
+# `fail_on_warning: true`, which applies the same rule on their builders.
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
   schedule:
-    # Link check only, Mondays at 05:17 UTC. Dead external links surface
-    # without blocking a normal build.
+    # Mondays at 05:17 UTC. Dead external links surface without blocking a
+    # normal build.
     - cron: '17 5 * * 1'
 
 permissions:
   contents: read
 
-# One global group, as GitHub's own Pages workflow recommends: a site has a
-# single deployment pipeline, and letting two runs deploy at once makes the
-# second one queue behind the first instead of failing cleanly.
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   FORCE_COLOR: "1"
@@ -37,74 +30,8 @@ env:
 
 jobs:
 
-  build:
-    name: build
-    if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: pyproject.toml
-
-      # The architecture diagrams are rendered from .dot sources at build time.
-      - name: Install Graphviz
-        run: sudo apt-get update && sudo apt-get install -y graphviz
-
-      - name: Install hatch
-        run: pip install hatch==${{ env.HATCH_VERSION }}
-
-      # A clean build: an incremental one hides autodoc and cross-reference
-      # warnings, and the Makefile treats warnings as errors.
-      - name: Build the site
-        run: hatch run docs:rebuild
-
-      # GitHub Pages serves _static/ etc. only if Jekyll is disabled.
-      - name: Disable Jekyll
-        run: touch docs/build/html/.nojekyll
-
-      - name: Upload the artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs/build/html
-
-  deploy:
-    name: deploy to github pages
-    needs: build
-    if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    # Generous on purpose: the Pages backend can leave a deployment in
-    # `in_progress` for a long time, especially the first one for a new site.
-    # A job timeout shorter than the action's own cancels it mid-poll and the
-    # deployment is reported as `error` rather than finishing.
-    timeout-minutes: 35
-
-    permissions:
-      pages: write
-      id-token: write
-
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    steps:
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v4
-        with:
-          # Milliseconds the action waits for the deployment to finish. The
-          # default is 10 minutes; keep it below the job timeout above so a
-          # genuinely stuck deployment fails with the action's own message
-          # instead of being cancelled without one.
-          timeout: 1800000
-
   linkcheck:
     name: link check
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     continue-on-error: true

@@ -63,5 +63,5 @@ will be `0.1.0`.
 - `n_scc_iterations` is absent with recent DFTB+ versions, which no longer print
   the line the parser looks for.
 
-See [known parsing gaps](https://quantum-arise-acad.github.io/aiida-dftbplus/reference/exit-codes.html#known-parsing-gaps)
+See [known parsing gaps](https://aiida-dftbplus.readthedocs.io/en/latest/reference/exit-codes.html#known-parsing-gaps)
 for the current list.
