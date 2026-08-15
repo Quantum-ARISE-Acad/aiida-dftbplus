@@ -4,6 +4,17 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-08-15
+
+Packaging metadata only. Nothing in `src/aiida_dftbplus` changed.
+
+### Changed
+
+- The distribution no longer declares `authors`, and `Documentation` is now the
+  only project URL: the `Source` and `Bug Tracker` links are gone. The PyPI page
+  and the AiiDA plugin registry entry therefore show no author and no repository
+  link for this release.
+
 ## [0.1.1] - 2026-08-15
 
 Documentation and packaging only. Nothing in `src/aiida_dftbplus` changed, so
