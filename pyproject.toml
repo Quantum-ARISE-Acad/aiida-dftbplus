@@ -7,7 +7,6 @@ build-backend = "hatchling.build"
 name = "aiida-dftbplus"
 dynamic = ["version"]  # read from aiida_dftbplus/src/__init__.py
 description = "AiiDA plugin for DFTB+ calculations"
-authors = [{name = "Quantum ARISE", email = "sitouamu510@gmail.com"}]
 readme = "README.md"
 license = {file = "LICENSE"}
 classifiers = [
@@ -56,10 +55,7 @@ docs = [
 ]
 
 [project.urls]
-Source = "https://github.com/Quantum-ARISE-Acad/aiida-dftbplus"
 Documentation = "https://aiida-dftbplus.readthedocs.io/"
-"Bug Tracker" = "https://github.com/Quantum-ARISE-Acad/aiida-dftbplus/issues"
-
 [project.entry-points."aiida.data"]
 "dftbplus" = "aiida_dftbplus.data:DftbParameters"
 
