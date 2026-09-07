@@ -2,7 +2,7 @@
 # dependency group directly. Keep in sync with [dependency-groups] docs in
 # pyproject.toml — that is the source of truth for every other build path
 # (`hatch run docs:build`, `pip install -e . --group docs`).
-sphinx~=7.2
+sphinx>=7.2,<9.0
 myst-parser~=4.0
 sphinx-autodoc-typehints~=2.0
 sphinx-copybutton~=0.5
